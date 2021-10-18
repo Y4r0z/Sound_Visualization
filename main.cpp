@@ -12,34 +12,36 @@ using namespace std;
 void interpolate(vector<float> &ar, float power);
 void hold(vector<float> prev, vector<float> &current, float power);
 void fft(valarray<complex<double>> &x);
+float getSum(vector<float> s, int a, int b);
 
 int main()
 {
-    string fileName = "Files/music5.ogg";
+    string fileName = "Files/ride.ogg";
     sf::ContextSettings settings;
-    settings.antialiasingLevel = 8;
+    settings.antialiasingLevel = 2;
     sf::RenderWindow window(sf::VideoMode(1920, 1080), "Audio visualizer",sf::Style::Fullscreen,settings);
 
     int circleRadius = 250;
     int circleResolution = 256;
+    int chunkSamplesCount = 2048; //pow(2,n)
     int maxHeight = 250;
 
     valarray<complex<double>> complexArray;
-    complexArray.resize(circleResolution);
+    complexArray.resize(chunkSamplesCount);
 
     vector<float> leveler;
-    for(int i = 0; i < circleResolution; i++)
+    for(int i = 0; i < chunkSamplesCount; i++)
     {
-        leveler.push_back(0.1f +  abs(sin(2 * M_PI * i / circleResolution)));
+        leveler.push_back(0.1f +  1.f * abs(sin(2 * M_PI * i / chunkSamplesCount)));
     }
 
     sf::Vector2f centerPos = sf::Vector2f(window.getSize().x/2,window.getSize().y/2);
 
     vector<float> sizes;
-    sizes.resize(circleResolution);
+    sizes.resize(chunkSamplesCount);
 
     vector<float> prevSizes;
-    sizes.resize(circleResolution);
+    sizes.resize(chunkSamplesCount);
 
     sf::CircleShape mainCircle(circleRadius,256);
     mainCircle.setPosition(window.getSize().x/2 - circleRadius,window.getSize().y/2 - circleRadius);
@@ -93,38 +95,43 @@ int main()
 
         int playProgress = sound.getPlayingOffset().asSeconds() * sampleRate;
 
-        for(int i = playProgress; i < circleResolution + playProgress && i < sampleCount; i++)
+        for(int i = playProgress; i < chunkSamplesCount + playProgress && i < sampleCount; i++)
         {
             complexArray[i-playProgress] = complex<double>(buffer.getSamples()[i],0.0);
         }
         fft(complexArray);
 
-        for (int i = playProgress; i < circleResolution + playProgress && i < sampleCount; i++) {
-            float height = (abs(complexArray[i - playProgress]) / 1000) *  leveler[i - playProgress];
+        for (int i = 0; i < chunkSamplesCount && i < sampleCount; i++) {
+            float height = (abs(complexArray[i]) / 1000) *  leveler[i];
             sampleSumm += height;
             if (height > maxHeight) height = maxHeight;
 
-            sizes[i-playProgress] = 5 + height;
+            sizes[i] = height;
 
         }
 
 
         hold(prevSizes,sizes,0.9f);
-        interpolate(sizes,0.8f);
+        interpolate(sizes,0.9f);
 
         for(int i = 0; i < circleResolution; i++)
         {
             shape.setPoint(i,
-                           ((float)circleRadius + sizes[i]) *
+                           ((float)circleRadius + getSum(sizes,
+                                                         i * (chunkSamplesCount / circleResolution),
+                                                         i * (chunkSamplesCount / circleResolution) + (chunkSamplesCount / circleResolution))) *
                            sf::Vector2f(sinf((i) * 2 * M_PI / circleResolution),
                                         cosf((i) * 2 * M_PI / circleResolution)
                            ));
 
             shape2.setPoint(i,
-                           ((float)circleRadius + prevSizes[i] + maxHeight/12) *
+                           ((float)circleRadius + getSum(prevSizes,
+                                                         i * (chunkSamplesCount / circleResolution),
+                                                         i * (chunkSamplesCount / circleResolution) + (chunkSamplesCount / circleResolution)) + maxHeight/12) *
                            sf::Vector2f(sinf((i) * 2 * M_PI / circleResolution),
                                         cosf((i) * 2 * M_PI / circleResolution)
                            ));
+
         }
 
 
@@ -132,9 +139,9 @@ int main()
 
 
         window.clear(sf::Color::Black);
-        float k = (((float)sampleSumm/(float)circleResolution)/(float)maxHeight) * 3;
+        float k = (((float)sampleSumm/(float)chunkSamplesCount)/(float)maxHeight) * 3;
         shape2.setFillColor(sf::Color(255 - k * 100
-                                      ,k * 50,
+                ,k * 50,
                                         k * 255));
         window.draw(shape2);
         window.draw(shape);
@@ -164,7 +171,7 @@ void interpolate(vector<float> &ar, float power)
         float sizeSumm = (ar[i-1] + ar[i+1] + ar[i])/3;
 
         ar[i]= Lerp(ar[i], sizeSumm, power) ;
-        ar[i]= Lerp(ar[i],ar[i-1], power/3);
+        ar[i]= Lerp(ar[i],ar[i-1], power);
 
 
     }
@@ -172,7 +179,7 @@ void interpolate(vector<float> &ar, float power)
 
     for(int i = ar.size()-2; i > 0; i--)
     {
-        ar[i] = Lerp(ar[i], ar[i + 1], power/3);
+        ar[i] = Lerp(ar[i], ar[i + 1], power);
     }
 
 
@@ -204,4 +211,14 @@ void fft(valarray<complex<double>> &x) {
         x[k] = even[k] + t;
         x[k + N / 2] = even[k] - t;
     }
+}
+
+float getSum(vector<float> s,int a, int b)
+{
+    float sum = 0;
+    for(int i = a; i < b; i++)
+    {
+        sum+=s[i];
+    }
+    return sum/(b-a);
 }
